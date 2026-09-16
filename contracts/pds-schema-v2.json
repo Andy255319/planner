@@ -1,0 +1,25 @@
+{
+  "version": "v2",
+  "database": "Cloud Firestore",
+  "tables": {
+    "plans": {
+      "description": "계획(Plan) 저장소",
+      "fields": {
+        "title": "string (계획 이름)",
+        "period": "string (기간)",
+        "expectedHours": "number (예상 시간)",
+        "successCriteria": "string (성공 기준)"
+      }
+    },
+    "tasks": {
+      "description": "실제로 한 일(Do) 저장소",
+      "fields": {
+        "planId": "string (연결된 계획 ID)",
+        "taskName": "string (할 일 내용)",
+        "actualHours": "number (실제 걸린 시간)",
+        "blockedReason": "string (막힌 이유)",
+        "isCompleted": "boolean (완료 여부)"
+      }
+    }
+  }
+}
