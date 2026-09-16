@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>플랜두씨 다이어리</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f8f9fa; padding: 20px; color: #333; }
+        .notice { background: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; margin-bottom: 20px; font-weight: bold; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h2 { margin-top: 0; color: #007bff; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        input, button { padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        .list-item { background: #f1f3f5; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center; }
+        .stat-box { background: #e9ecef; padding: 15px; border-radius: 8px; font-size: 18px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="notice">
+        ⚠️ 지금은 로그인이 없어 링크를 아는 사람은 누구나 볼 수 있습니다. 남이 봐도 괜찮은 내용만 넣으세요.
+    </div>
+
+    <div class="card" id="seeSection">
+        <h2>📊 돌아보기 (See)</h2>
+        <div class="stats">
+            <div class="stat-box">총 계획 수<br><span id="statPlans">0</span>건</div>
+            <div class="stat-box">완료된 할 일<br><span id="statCompleted">0</span>건</div>
+            <div class="stat-box">막힘/지연 수<br><span id="statBlocked">0</span>건</div>
+            <div class="stat-box">예상 vs 실제<br><span id="statHours">0 / 0</span> 시간</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>📝 내 계획 (Plan)</h2>
+        <div id="planList">로딩 중...</div>
+    </div>
+
+    <div class="card">
+        <h2>🏃 실제로 한 일 (Do)</h2>
+        <input type="text" id="taskName" placeholder="할 일 내용 입력">
+        <input type="number" id="actualHours" placeholder="실제 걸린 시간(시간)">
+        <input type="text" id="blockedReason" placeholder="막힌 이유 (없으면 비워두기)">
+        <button onclick="addTask()">+ 할 일 추가 기록</button>
+        <div id="taskList" style="margin-top: 15px;"></div>
+    </div>
+
+    <script>
+        let plans = [];
+        let tasks = [];
+
+        // 보안 처리를 위해 텍스트를 안전하게 삽입하는 함수 (XSS 방어 - T06-C57)
+        function createElementWithText(tag, text) {
+            const el = document.createElement(tag);
+            el.textContent = text;
+            return el;
+        }
+
+        // 백엔드(api/db.js)와 안전하게 통신하는 함수
+        async function apiCall(action, collection, data = null, id = null) {
+            const res = await fetch('/api/db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, collection, data, id })
+            });
+            return await res.json();
+        }
+
+        async function init() {
+            // DB에서 데이터 불러오기
+            plans = await apiCall('GET_ALL', 'plans');
+            
+            // [자동 초기화] 만약 DB가 텅 비어있다면, 당신이 설정한 기본 계획을 밀어넣습니다.
+            if (plans.length === 0) {
+                const defaultPlan = {
+                    title: "부모님과 오늘 있었던 일 이야기 나누기",
+                    period: "2026-09-16 (수) ~ 2026-09-17 (목) 19:00~20:00",
+                    expectedHours: 2,
+                    successCriteria: "즐겁게 대화 마무리하기"
+                };
+                await apiCall('ADD', 'plans', defaultPlan);
+                plans = await apiCall('GET_ALL', 'plans'); // 다시 불러오기
+            }
+
+            tasks = await apiCall('GET_ALL', 'tasks');
+            render();
+        }
+
+        async function addTask() {
+            const name = document.getElementById('taskName').value;
+            const hours = document.getElementById('actualHours').value;
+            const blocked = document.getElementById('blockedReason').value;
+            
+            if (!name || plans.length === 0) return alert('내용을 입력하세요.');
+
+            const newTask = {
+                planId: plans[0].id, // 첫 번째 계획에 종속시킴
+                taskName: name,
+                actualHours: Number(hours) || 0,
+                blockedReason: blocked,
+                isCompleted: true // 완료 버튼 중복 방지 (T06-C21)
+            };
+
+            await apiCall('ADD', 'tasks', newTask);
+            
+            // 입력창 초기화 및 리렌더링
+            document.getElementById('taskName').value = '';
+            document.getElementById('actualHours').value = '';
+            document.getElementById('blockedReason').value = '';
+            
+            tasks = await apiCall('GET_ALL', 'tasks');
+            render();
+        }
+
+        function render() {
+            // 1. 계획 (Plan) 렌더링
+            const planListEl = document.getElementById('planList');
+            planListEl.innerHTML = '';
+            plans.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.appendChild(createElementWithText('strong', p.title || '제목 없음'));
+                div.appendChild(createElementWithText('p', `기간: ${p.period || '-'} / 예상: ${p.expectedHours || 0}시간`));
+                planListEl.appendChild(div);
+            });
+
+            // 2. 할 일 (Do) 렌더링
+            const taskListEl = document.getElementById('taskList');
+            taskListEl.innerHTML = '';
+            let totalActualHours = 0;
+            let blockedCount = 0;
+
+            tasks.forEach(t => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.appendChild(createElementWithText('strong', `✅ ${t.taskName}`));
+                
+                let detail = `소요 시간: ${t.actualHours}시간`;
+                if (t.blockedReason) {
+                    detail += ` | 막힌 이유: ${t.blockedReason}`;
+                    blockedCount++;
+                }
+                div.appendChild(createElementWithText('p', detail));
+                taskListEl.appendChild(div);
+
+                totalActualHours += (t.actualHours || 0);
+            });
+
+            // 3. 돌아보기 (See) 통계 업데이트
+            document.getElementById('statPlans').textContent = plans.length;
+            document.getElementById('statCompleted').textContent = tasks.length;
+            document.getElementById('statBlocked').textContent = blockedCount;
+            
+            const expected = plans.reduce((sum, p) => sum + (p.expectedHours || 0), 0);
+            document.getElementById('statHours').textContent = `${expected} / ${totalActualHours}`;
+        }
+
+        // 앱 시작
+        init();
+    </script>
+</body>
+</html>
