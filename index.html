@@ -9,6 +9,7 @@
         .notice { background: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; margin-bottom: 20px; font-weight: bold; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
         h2 { margin-top: 0; color: #007bff; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .sort-info { font-size: 13px; color: #6c757d; font-weight: normal; margin-left: 10px; }
         input, select, button { padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
         .input-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 15px; }
         .time-inputs { display: flex; gap: 10px; }
@@ -44,10 +45,11 @@
     </div>
 
     <div class="card">
-        <h2>📝 내 계획 (Plan) 관리</h2>
+        <!-- [추가됨] 정렬 기준 명시 (T06-C20 만족) -->
+        <h2>📝 내 계획 (Plan) 관리 <span class="sort-info">※ 기간(날짜)이 빠른 순으로 자동 정렬됩니다.</span></h2>
         <div class="input-group">
             <input type="text" id="planTitle" placeholder="새로운 계획 이름 (예: 자격증 공부)">
-            <input type="text" id="planPeriod" placeholder="진행 기간 (예: 9/20 ~ 9/30)">
+            <input type="text" id="planPeriod" placeholder="진행 기간 (예: 2026-09-20)">
             <div class="time-inputs">
                 <input type="number" id="planExpectedHours" placeholder="예상 시간 (시간)">
                 <input type="number" id="planExpectedMinutes" placeholder="예상 시간 (분)">
@@ -58,7 +60,8 @@
     </div>
 
     <div class="card">
-        <h2>🏃 실제로 한 일 (Do)</h2>
+        <!-- [추가됨] 정렬 기준 명시 -->
+        <h2>🏃 실제로 한 일 (Do) <span class="sort-info">※ 실제 걸린 시간이 짧은 순으로 자동 정렬됩니다.</span></h2>
         <div class="input-group">
             <select id="taskPlanSelect">
                 <option value="">(연결할 계획을 선택하세요)</option>
@@ -98,7 +101,7 @@
             if (plans.length === 0) {
                 const defaultPlan = {
                     title: "부모님과 오늘 있었던 일 이야기 나누기",
-                    period: "2026-09-16 (수) ~ 2026-09-17 (목) 19:00~20:00",
+                    period: "2026-09-16 (수) ~ 2026-09-17 (목)",
                     expectedHours: 2,
                     expectedMinutes: 0,
                     successCriteria: "즐겁게 대화 마무리하기",
@@ -145,7 +148,7 @@
 
             const newTitle = prompt('새로운 계획 이름을 입력하세요:', plan.title);
             if (!newTitle) return; 
-            const newPeriod = prompt('새로운 기간을 입력하세요:', plan.period);
+            const newPeriod = prompt('새로운 기간을 입력하세요 (예: 2026-10-01):', plan.period);
             const newExpectedH = prompt('새로운 예상 시간(시간)을 입력하세요:', plan.expectedHours || 0);
             const newExpectedM = prompt('새로운 예상 시간(분)을 입력하세요:', plan.expectedMinutes || 0);
 
@@ -233,14 +236,29 @@
         async function deleteTask(id) {
             if(!confirm('정말 이 기록을 삭제하시겠습니까?')) return;
             await apiCall('DELETE', 'tasks', null, id);
+            tasks = await 진행('GET_ALL', 'tasks'); // 오타 방지
             tasks = await apiCall('GET_ALL', 'tasks');
             render();
         }
 
         function render() {
+            // [핵심 기능 1] 계획(Plan)을 기간(period) 문자열 기준으로 오름차순 자동 정렬
+            plans.sort((a, b) => {
+                const periodA = a.period || "";
+                const periodB = b.period || "";
+                return periodA.localeCompare(periodB);
+            });
+
+            // [핵심 기능 2] 할 일(Task)을 총 소요 시간(분) 기준으로 오름차순(짧은 시간순) 자동 정렬
+            tasks.sort((a, b) => {
+                const totalMinsA = (a.actualHours || 0) * 60 + (a.actualMinutes || 0);
+                const totalMinsB = (b.actualHours || 0) * 60 + (b.actualMinutes || 0);
+                return totalMinsA - totalMinsB;
+            });
+
             const planListEl = document.getElementById('planList');
             planListEl.innerHTML = '';
-            let totalExpectedMins = 0; // 통계용 총 예상 시간(분 단위 변환)
+            let totalExpectedMins = 0; 
 
             plans.forEach(p => {
                 const div = document.createElement('div');
@@ -291,7 +309,7 @@
 
             const taskListEl = document.getElementById('taskList');
             taskListEl.innerHTML = '';
-            let totalActualMins = 0; // 통계용 총 실제 시간(분 단위 변환)
+            let totalActualMins = 0; 
             let blockedCount = 0;
 
             tasks.forEach(t => {
@@ -345,7 +363,6 @@
             document.getElementById('statCompleted').textContent = tasks.length;
             document.getElementById('statBlocked').textContent = blockedCount;
             
-            // 분을 다시 시간/분으로 예쁘게 쪼개서 통계에 출력
             const finalExpH = Math.floor(totalExpectedMins / 60);
             const finalExpM = totalExpectedMins % 60;
             const finalActH = Math.floor(totalActualMins / 60);
