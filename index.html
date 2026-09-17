@@ -9,10 +9,11 @@
         .notice { background: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; margin-bottom: 20px; font-weight: bold; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
         h2 { margin-top: 0; color: #007bff; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        input, button { padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; }
-        button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
+        input, select, button { padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .input-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 15px; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; padding: 10px; }
         button:hover { background: #0056b3; }
-        .btn-sm { padding: 4px 8px; font-size: 12px; margin-right: 5px; }
+        .btn-sm { padding: 4px 8px; font-size: 12px; margin-right: 5px; display: inline-block; }
         .btn-danger { background: #dc3545; }
         .btn-danger:hover { background: #c82333; }
         .btn-warning { background: #ffc107; color: black; }
@@ -21,6 +22,7 @@
         .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center; }
         .stat-box { background: #e9ecef; padding: 15px; border-radius: 8px; font-size: 18px; font-weight: bold; }
         .history-text { font-size: 12px; color: #6c757d; margin-top: 5px; }
+        .badge { background: #17a2b8; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-bottom: 5px; display: inline-block; }
     </style>
 </head>
 <body>
@@ -39,32 +41,43 @@
         </div>
     </div>
 
+    <!-- [추가됨] 계획 입력란 -->
     <div class="card">
-        <h2>📝 내 계획 (Plan)</h2>
-        <div id="planList">로딩 중...</div>
+        <h2>📝 내 계획 (Plan) 관리</h2>
+        <div class="input-group">
+            <input type="text" id="planTitle" placeholder="새로운 계획 이름 (예: 자격증 공부)">
+            <input type="text" id="planPeriod" placeholder="진행 기간 (예: 9/20 ~ 9/30)">
+            <input type="number" id="planExpected" placeholder="총 예상 소요 시간 (숫자만)">
+            <button onclick="addPlan()">+ 새 계획 만들기</button>
+        </div>
+        <div id="planList" style="margin-top: 20px; border-top: 2px dashed #eee; padding-top: 15px;">로딩 중...</div>
     </div>
 
     <div class="card">
         <h2>🏃 실제로 한 일 (Do)</h2>
-        <input type="text" id="taskName" placeholder="할 일 내용 입력">
-        <input type="number" id="actualHours" placeholder="실제 걸린 시간(시간)">
-        <input type="text" id="blockedReason" placeholder="막힌 이유 (없으면 비워두기)">
-        <button onclick="addTask()">+ 할 일 추가 기록</button>
-        <div id="taskList" style="margin-top: 15px;"></div>
+        <div class="input-group">
+            <!-- [추가됨] 어떤 계획에 속한 일인지 선택하는 드롭다운 -->
+            <select id="taskPlanSelect">
+                <option value="">(연결할 계획을 선택하세요)</option>
+            </select>
+            <input type="text" id="taskName" placeholder="할 일 내용 입력">
+            <input type="number" id="actualHours" placeholder="실제 걸린 시간(시간)">
+            <input type="text" id="blockedReason" placeholder="막힌 이유 (없으면 비워두기)">
+            <button onclick="addTask()">+ 할 일 추가 기록</button>
+        </div>
+        <div id="taskList" style="margin-top: 20px; border-top: 2px dashed #eee; padding-top: 15px;"></div>
     </div>
 
     <script>
         let plans = [];
         let tasks = [];
 
-        // 보안 처리를 위해 텍스트를 안전하게 삽입하는 함수 (XSS 방어)
         function createElementWithText(tag, text) {
             const el = document.createElement(tag);
             el.textContent = text;
             return el;
         }
 
-        // 백엔드 통신 함수
         async function apiCall(action, collection, data = null, id = null) {
             const res = await fetch('/api/db', {
                 method: 'POST',
@@ -74,7 +87,6 @@
             return await res.json();
         }
 
-        // 초기 데이터 로드
         async function init() {
             plans = await apiCall('GET_ALL', 'plans');
             if (plans.length === 0) {
@@ -92,7 +104,33 @@
             render();
         }
 
-        // --- 계획(Plan) 관련 로직 ---
+        // [추가됨] 새로운 계획(Plan) 생성 함수
+        async function addPlan() {
+            const title = document.getElementById('planTitle').value;
+            const period = document.getElementById('planPeriod').value;
+            const expected = document.getElementById('planExpected').value;
+
+            if (!title) return alert('계획 이름을 입력하세요.');
+
+            const newPlan = {
+                title: title,
+                period: period || '-',
+                expectedHours: Number(expected) || 0,
+                successCriteria: "",
+                history: "[]"
+            };
+
+            await apiCall('ADD', 'plans', newPlan);
+
+            // 입력창 비우기
+            document.getElementById('planTitle').value = '';
+            document.getElementById('planPeriod').value = '';
+            document.getElementById('planExpected').value = '';
+
+            plans = await apiCall('GET_ALL', 'plans');
+            render();
+        }
+
         async function editPlan(id) {
             const plan = plans.find(p => p.id === id);
             if(!plan) return;
@@ -123,7 +161,7 @@
         }
 
         async function deletePlan(id) {
-            if(!confirm('정말 이 계획을 삭제하시겠습니까?')) return;
+            if(!confirm('정말 이 계획을 삭제하시겠습니까? 연결된 할 일 데이터는 남지만 고립될 수 있습니다.')) return;
             await apiCall('DELETE', 'plans', null, id);
             plans = await apiCall('GET_ALL', 'plans');
             render();
@@ -131,14 +169,16 @@
 
         // --- 할 일(Task/Do) 관련 로직 ---
         async function addTask() {
+            const planId = document.getElementById('taskPlanSelect').value;
             const name = document.getElementById('taskName').value;
             const hours = document.getElementById('actualHours').value;
             const blocked = document.getElementById('blockedReason').value;
             
-            if (!name || plans.length === 0) return alert('내용을 입력하세요.');
+            if (!planId) return alert('어떤 계획에 대한 일인지 먼저 위에서 선택해 주세요.');
+            if (!name) return alert('할 일 내용을 입력하세요.');
 
             const newTask = {
-                planId: plans[0].id, 
+                planId: planId, 
                 taskName: name,
                 actualHours: Number(hours) || 0,
                 blockedReason: blocked,
@@ -155,7 +195,6 @@
             render();
         }
 
-        // [추가됨] 할 일 수정 기능
         async function editTask(id) {
             const task = tasks.find(t => t.id === id);
             if(!task) return;
@@ -176,7 +215,6 @@
             render();
         }
 
-        // [추가됨] 할 일 삭제 기능
         async function deleteTask(id) {
             if(!confirm('정말 이 기록을 삭제하시겠습니까?')) return;
             await apiCall('DELETE', 'tasks', null, id);
@@ -186,7 +224,7 @@
 
         // --- 화면 렌더링 ---
         function render() {
-            // 계획 리스트 렌더링
+            // 1. 계획 리스트 렌더링
             const planListEl = document.getElementById('planList');
             planListEl.innerHTML = '';
             plans.forEach(p => {
@@ -222,7 +260,17 @@
                 planListEl.appendChild(div);
             });
 
-            // 할 일 리스트 렌더링
+            // 2. [추가됨] 할 일 기록용 셀렉트 박스(드롭다운) 옵션 업데이트
+            const taskPlanSelect = document.getElementById('taskPlanSelect');
+            taskPlanSelect.innerHTML = '<option value="">(연결할 계획을 선택하세요)</option>';
+            plans.forEach(p => {
+                const option = document.createElement('option');
+                option.value = p.id;
+                option.textContent = p.title;
+                taskPlanSelect.appendChild(option);
+            });
+
+            // 3. 할 일 리스트 렌더링
             const taskListEl = document.getElementById('taskList');
             taskListEl.innerHTML = '';
             let totalActualHours = 0;
@@ -231,6 +279,17 @@
             tasks.forEach(t => {
                 const div = document.createElement('div');
                 div.className = 'list-item';
+                
+                // 어떤 계획에 속한 일인지 라벨 표시
+                const parentPlan = plans.find(p => p.id === t.planId);
+                if (parentPlan) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge';
+                    badge.textContent = `[${parentPlan.title}]`;
+                    div.appendChild(badge);
+                    div.appendChild(document.createElement('br'));
+                }
+
                 div.appendChild(createElementWithText('strong', `✅ ${t.taskName}`));
                 
                 let detail = `소요 시간: ${t.actualHours}시간`;
@@ -240,7 +299,6 @@
                 }
                 div.appendChild(createElementWithText('p', detail));
                 
-                // 할 일(Task) 전용 수정/삭제 버튼 추가
                 const btnGroup = document.createElement('div');
                 btnGroup.style.marginTop = '10px';
                 
@@ -259,11 +317,10 @@
                 div.appendChild(btnGroup);
 
                 taskListEl.appendChild(div);
-
                 totalActualHours += (t.actualHours || 0);
             });
 
-            // 통계 렌더링
+            // 4. 통계 렌더링
             document.getElementById('statPlans').textContent = plans.length;
             document.getElementById('statCompleted').textContent = tasks.length;
             document.getElementById('statBlocked').textContent = blockedCount;
