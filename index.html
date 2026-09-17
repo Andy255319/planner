@@ -12,9 +12,15 @@
         input, button { padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; }
         button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
         button:hover { background: #0056b3; }
+        .btn-sm { padding: 4px 8px; font-size: 12px; margin-right: 5px; }
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-warning { background: #ffc107; color: black; }
+        .btn-warning:hover { background: #e0a800; }
         .list-item { background: #f1f3f5; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
         .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center; }
         .stat-box { background: #e9ecef; padding: 15px; border-radius: 8px; font-size: 18px; font-weight: bold; }
+        .history-text { font-size: 12px; color: #6c757d; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -51,14 +57,12 @@
         let plans = [];
         let tasks = [];
 
-        // 보안 처리를 위해 텍스트를 안전하게 삽입하는 함수 (XSS 방어 - T06-C57)
         function createElementWithText(tag, text) {
             const el = document.createElement(tag);
             el.textContent = text;
             return el;
         }
 
-        // 백엔드(api/db.js)와 안전하게 통신하는 함수
         async function apiCall(action, collection, data = null, id = null) {
             const res = await fetch('/api/db', {
                 method: 'POST',
@@ -69,21 +73,18 @@
         }
 
         async function init() {
-            // DB에서 데이터 불러오기
             plans = await apiCall('GET_ALL', 'plans');
-            
-            // [자동 초기화] 만약 DB가 텅 비어있다면, 당신이 설정한 기본 계획을 밀어넣습니다.
             if (plans.length === 0) {
                 const defaultPlan = {
                     title: "부모님과 오늘 있었던 일 이야기 나누기",
                     period: "2026-09-16 (수) ~ 2026-09-17 (목) 19:00~20:00",
                     expectedHours: 2,
-                    successCriteria: "즐겁게 대화 마무리하기"
+                    successCriteria: "즐겁게 대화 마무리하기",
+                    history: "[]" // 초기 이력은 빈 배열
                 };
                 await apiCall('ADD', 'plans', defaultPlan);
-                plans = await apiCall('GET_ALL', 'plans'); // 다시 불러오기
+                plans = await apiCall('GET_ALL', 'plans');
             }
-
             tasks = await apiCall('GET_ALL', 'tasks');
             render();
         }
@@ -96,16 +97,15 @@
             if (!name || plans.length === 0) return alert('내용을 입력하세요.');
 
             const newTask = {
-                planId: plans[0].id, // 첫 번째 계획에 종속시킴
+                planId: plans[0].id, 
                 taskName: name,
                 actualHours: Number(hours) || 0,
                 blockedReason: blocked,
-                isCompleted: true // 완료 버튼 중복 방지 (T06-C21)
+                isCompleted: true 
             };
 
             await apiCall('ADD', 'tasks', newTask);
             
-            // 입력창 초기화 및 리렌더링
             document.getElementById('taskName').value = '';
             document.getElementById('actualHours').value = '';
             document.getElementById('blockedReason').value = '';
@@ -114,8 +114,47 @@
             render();
         }
 
+        // [추가된 기능] 계획 수정
+        async function editPlan(id) {
+            const plan = plans.find(p => p.id === id);
+            if(!plan) return;
+
+            const newTitle = prompt('새로운 계획 이름을 입력하세요:', plan.title);
+            if (!newTitle) return; // 취소 시 중단
+            const newPeriod = prompt('새로운 기간을 입력하세요:', plan.period);
+            const newExpected = prompt('새로운 예상 시간(숫자)을 입력하세요:', plan.expectedHours);
+
+            // T06-C08 요구사항: 고치기 전 내용 보존
+            const historyData = plan.history ? JSON.parse(plan.history) : [];
+            historyData.push({
+                oldTitle: plan.title,
+                oldPeriod: plan.period,
+                oldExpected: plan.expectedHours,
+                changedAt: new Date().toISOString()
+            });
+
+            const updatedData = {
+                title: newTitle,
+                period: newPeriod || plan.period,
+                expectedHours: Number(newExpected) || plan.expectedHours,
+                history: JSON.stringify(historyData)
+            };
+
+            await apiCall('UPDATE', 'plans', updatedData, id);
+            plans = await apiCall('GET_ALL', 'plans');
+            render();
+        }
+
+        // [추가된 기능] 계획 삭제
+        async function deletePlan(id) {
+            if(!confirm('정말 이 계획을 삭제하시겠습니까? 관련된 할 일도 고아가 될 수 있습니다.')) return;
+            
+            await apiCall('DELETE', 'plans', null, id);
+            plans = await apiCall('GET_ALL', 'plans');
+            render();
+        }
+
         function render() {
-            // 1. 계획 (Plan) 렌더링
             const planListEl = document.getElementById('planList');
             planListEl.innerHTML = '';
             plans.forEach(p => {
@@ -123,10 +162,37 @@
                 div.className = 'list-item';
                 div.appendChild(createElementWithText('strong', p.title || '제목 없음'));
                 div.appendChild(createElementWithText('p', `기간: ${p.period || '-'} / 예상: ${p.expectedHours || 0}시간`));
+                
+                // 수정 이력이 있다면 화면에 표시
+                if (p.history && p.history !== "[]") {
+                    const historyCount = JSON.parse(p.history).length;
+                    const historyNotice = document.createElement('p');
+                    historyNotice.className = 'history-text';
+                    historyNotice.textContent = `📝 과거 수정 이력 ${historyCount}건이 서버에 보존되어 있습니다.`;
+                    div.appendChild(historyNotice);
+                }
+
+                // 수정/삭제 버튼 추가
+                const btnGroup = document.createElement('div');
+                btnGroup.style.marginTop = '10px';
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm btn-warning';
+                editBtn.textContent = '수정';
+                editBtn.onclick = () => editPlan(p.id);
+                
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn-sm btn-danger';
+                delBtn.textContent = '삭제';
+                delBtn.onclick = () => deletePlan(p.id);
+
+                btnGroup.appendChild(editBtn);
+                btnGroup.appendChild(delBtn);
+                div.appendChild(btnGroup);
+
                 planListEl.appendChild(div);
             });
 
-            // 2. 할 일 (Do) 렌더링
             const taskListEl = document.getElementById('taskList');
             taskListEl.innerHTML = '';
             let totalActualHours = 0;
@@ -148,7 +214,6 @@
                 totalActualHours += (t.actualHours || 0);
             });
 
-            // 3. 돌아보기 (See) 통계 업데이트
             document.getElementById('statPlans').textContent = plans.length;
             document.getElementById('statCompleted').textContent = tasks.length;
             document.getElementById('statBlocked').textContent = blockedCount;
@@ -157,7 +222,6 @@
             document.getElementById('statHours').textContent = `${expected} / ${totalActualHours}`;
         }
 
-        // 앱 시작
         init();
     </script>
 </body>
