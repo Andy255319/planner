@@ -57,12 +57,14 @@
         let plans = [];
         let tasks = [];
 
+        // 보안 처리를 위해 텍스트를 안전하게 삽입하는 함수 (XSS 방어)
         function createElementWithText(tag, text) {
             const el = document.createElement(tag);
             el.textContent = text;
             return el;
         }
 
+        // 백엔드 통신 함수
         async function apiCall(action, collection, data = null, id = null) {
             const res = await fetch('/api/db', {
                 method: 'POST',
@@ -72,6 +74,7 @@
             return await res.json();
         }
 
+        // 초기 데이터 로드
         async function init() {
             plans = await apiCall('GET_ALL', 'plans');
             if (plans.length === 0) {
@@ -80,7 +83,7 @@
                     period: "2026-09-16 (수) ~ 2026-09-17 (목) 19:00~20:00",
                     expectedHours: 2,
                     successCriteria: "즐겁게 대화 마무리하기",
-                    history: "[]" // 초기 이력은 빈 배열
+                    history: "[]"
                 };
                 await apiCall('ADD', 'plans', defaultPlan);
                 plans = await apiCall('GET_ALL', 'plans');
@@ -89,6 +92,44 @@
             render();
         }
 
+        // --- 계획(Plan) 관련 로직 ---
+        async function editPlan(id) {
+            const plan = plans.find(p => p.id === id);
+            if(!plan) return;
+
+            const newTitle = prompt('새로운 계획 이름을 입력하세요:', plan.title);
+            if (!newTitle) return; 
+            const newPeriod = prompt('새로운 기간을 입력하세요:', plan.period);
+            const newExpected = prompt('새로운 예상 시간(숫자)을 입력하세요:', plan.expectedHours);
+
+            const historyData = plan.history ? JSON.parse(plan.history) : [];
+            historyData.push({
+                oldTitle: plan.title,
+                oldPeriod: plan.period,
+                oldExpected: plan.expectedHours,
+                changedAt: new Date().toISOString()
+            });
+
+            const updatedData = {
+                title: newTitle,
+                period: newPeriod || plan.period,
+                expectedHours: Number(newExpected) || plan.expectedHours,
+                history: JSON.stringify(historyData)
+            };
+
+            await apiCall('UPDATE', 'plans', updatedData, id);
+            plans = await apiCall('GET_ALL', 'plans');
+            render();
+        }
+
+        async function deletePlan(id) {
+            if(!confirm('정말 이 계획을 삭제하시겠습니까?')) return;
+            await apiCall('DELETE', 'plans', null, id);
+            plans = await apiCall('GET_ALL', 'plans');
+            render();
+        }
+
+        // --- 할 일(Task/Do) 관련 로직 ---
         async function addTask() {
             const name = document.getElementById('taskName').value;
             const hours = document.getElementById('actualHours').value;
@@ -114,47 +155,38 @@
             render();
         }
 
-        // [추가된 기능] 계획 수정
-        async function editPlan(id) {
-            const plan = plans.find(p => p.id === id);
-            if(!plan) return;
+        // [추가됨] 할 일 수정 기능
+        async function editTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if(!task) return;
 
-            const newTitle = prompt('새로운 계획 이름을 입력하세요:', plan.title);
-            if (!newTitle) return; // 취소 시 중단
-            const newPeriod = prompt('새로운 기간을 입력하세요:', plan.period);
-            const newExpected = prompt('새로운 예상 시간(숫자)을 입력하세요:', plan.expectedHours);
-
-            // T06-C08 요구사항: 고치기 전 내용 보존
-            const historyData = plan.history ? JSON.parse(plan.history) : [];
-            historyData.push({
-                oldTitle: plan.title,
-                oldPeriod: plan.period,
-                oldExpected: plan.expectedHours,
-                changedAt: new Date().toISOString()
-            });
+            const newName = prompt('할 일 내용을 수정하세요:', task.taskName);
+            if (!newName) return; 
+            const newHours = prompt('실제 걸린 시간(숫자)을 수정하세요:', task.actualHours);
+            const newBlocked = prompt('막힌 이유를 수정하세요:', task.blockedReason || '');
 
             const updatedData = {
-                title: newTitle,
-                period: newPeriod || plan.period,
-                expectedHours: Number(newExpected) || plan.expectedHours,
-                history: JSON.stringify(historyData)
+                taskName: newName,
+                actualHours: Number(newHours) || 0,
+                blockedReason: newBlocked
             };
 
-            await apiCall('UPDATE', 'plans', updatedData, id);
-            plans = await apiCall('GET_ALL', 'plans');
+            await apiCall('UPDATE', 'tasks', updatedData, id);
+            tasks = await apiCall('GET_ALL', 'tasks');
             render();
         }
 
-        // [추가된 기능] 계획 삭제
-        async function deletePlan(id) {
-            if(!confirm('정말 이 계획을 삭제하시겠습니까? 관련된 할 일도 고아가 될 수 있습니다.')) return;
-            
-            await apiCall('DELETE', 'plans', null, id);
-            plans = await apiCall('GET_ALL', 'plans');
+        // [추가됨] 할 일 삭제 기능
+        async function deleteTask(id) {
+            if(!confirm('정말 이 기록을 삭제하시겠습니까?')) return;
+            await apiCall('DELETE', 'tasks', null, id);
+            tasks = await apiCall('GET_ALL', 'tasks');
             render();
         }
 
+        // --- 화면 렌더링 ---
         function render() {
+            // 계획 리스트 렌더링
             const planListEl = document.getElementById('planList');
             planListEl.innerHTML = '';
             plans.forEach(p => {
@@ -163,7 +195,6 @@
                 div.appendChild(createElementWithText('strong', p.title || '제목 없음'));
                 div.appendChild(createElementWithText('p', `기간: ${p.period || '-'} / 예상: ${p.expectedHours || 0}시간`));
                 
-                // 수정 이력이 있다면 화면에 표시
                 if (p.history && p.history !== "[]") {
                     const historyCount = JSON.parse(p.history).length;
                     const historyNotice = document.createElement('p');
@@ -172,7 +203,6 @@
                     div.appendChild(historyNotice);
                 }
 
-                // 수정/삭제 버튼 추가
                 const btnGroup = document.createElement('div');
                 btnGroup.style.marginTop = '10px';
                 
@@ -189,10 +219,10 @@
                 btnGroup.appendChild(editBtn);
                 btnGroup.appendChild(delBtn);
                 div.appendChild(btnGroup);
-
                 planListEl.appendChild(div);
             });
 
+            // 할 일 리스트 렌더링
             const taskListEl = document.getElementById('taskList');
             taskListEl.innerHTML = '';
             let totalActualHours = 0;
@@ -209,11 +239,31 @@
                     blockedCount++;
                 }
                 div.appendChild(createElementWithText('p', detail));
+                
+                // 할 일(Task) 전용 수정/삭제 버튼 추가
+                const btnGroup = document.createElement('div');
+                btnGroup.style.marginTop = '10px';
+                
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn-sm btn-warning';
+                editBtn.textContent = '수정';
+                editBtn.onclick = () => editTask(t.id);
+                
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn-sm btn-danger';
+                delBtn.textContent = '삭제';
+                delBtn.onclick = () => deleteTask(t.id);
+
+                btnGroup.appendChild(editBtn);
+                btnGroup.appendChild(delBtn);
+                div.appendChild(btnGroup);
+
                 taskListEl.appendChild(div);
 
                 totalActualHours += (t.actualHours || 0);
             });
 
+            // 통계 렌더링
             document.getElementById('statPlans').textContent = plans.length;
             document.getElementById('statCompleted').textContent = tasks.length;
             document.getElementById('statBlocked').textContent = blockedCount;
