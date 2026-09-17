@@ -50,6 +50,12 @@ export default async function handler(req, res) {
             options.body = JSON.stringify(jsonToFirestore(data));
             const response = await fetch(url, options);
             return res.status(200).json(firestoreToJson(await response.json()));
+        } else if (action === 'DELETE') {
+            // 새롭게 추가된 삭제 기능
+            url = `${BASE_URL}/${collection}/${id}?key=${API_KEY}`;
+            options.method = 'DELETE';
+            await fetch(url, options);
+            return res.status(200).json({ success: true });
         }
     } catch (error) {
         return res.status(500).json({ error: error.message });
