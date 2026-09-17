@@ -11,6 +11,8 @@
         h2 { margin-top: 0; color: #007bff; border-bottom: 2px solid #eee; padding-bottom: 10px; }
         input, select, button { padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
         .input-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 15px; }
+        .time-inputs { display: flex; gap: 10px; }
+        .time-inputs input { flex: 1; }
         button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; padding: 10px; }
         button:hover { background: #0056b3; }
         .btn-sm { padding: 4px 8px; font-size: 12px; margin-right: 5px; display: inline-block; }
@@ -37,17 +39,19 @@
             <div class="stat-box">총 계획 수<br><span id="statPlans">0</span>건</div>
             <div class="stat-box">완료된 할 일<br><span id="statCompleted">0</span>건</div>
             <div class="stat-box">막힘/지연 수<br><span id="statBlocked">0</span>건</div>
-            <div class="stat-box">예상 vs 실제<br><span id="statHours">0 / 0</span> 시간</div>
+            <div class="stat-box">예상 vs 실제<br><span id="statHours" style="font-size:15px;">0 / 0</span></div>
         </div>
     </div>
 
-    <!-- [추가됨] 계획 입력란 -->
     <div class="card">
         <h2>📝 내 계획 (Plan) 관리</h2>
         <div class="input-group">
             <input type="text" id="planTitle" placeholder="새로운 계획 이름 (예: 자격증 공부)">
             <input type="text" id="planPeriod" placeholder="진행 기간 (예: 9/20 ~ 9/30)">
-            <input type="number" id="planExpected" placeholder="총 예상 소요 시간 (숫자만)">
+            <div class="time-inputs">
+                <input type="number" id="planExpectedHours" placeholder="예상 시간 (시간)">
+                <input type="number" id="planExpectedMinutes" placeholder="예상 시간 (분)">
+            </div>
             <button onclick="addPlan()">+ 새 계획 만들기</button>
         </div>
         <div id="planList" style="margin-top: 20px; border-top: 2px dashed #eee; padding-top: 15px;">로딩 중...</div>
@@ -56,12 +60,14 @@
     <div class="card">
         <h2>🏃 실제로 한 일 (Do)</h2>
         <div class="input-group">
-            <!-- [추가됨] 어떤 계획에 속한 일인지 선택하는 드롭다운 -->
             <select id="taskPlanSelect">
                 <option value="">(연결할 계획을 선택하세요)</option>
             </select>
             <input type="text" id="taskName" placeholder="할 일 내용 입력">
-            <input type="number" id="actualHours" placeholder="실제 걸린 시간(시간)">
+            <div class="time-inputs">
+                <input type="number" id="actualHours" placeholder="실제 소요 (시간)">
+                <input type="number" id="actualMinutes" placeholder="실제 소요 (분)">
+            </div>
             <input type="text" id="blockedReason" placeholder="막힌 이유 (없으면 비워두기)">
             <button onclick="addTask()">+ 할 일 추가 기록</button>
         </div>
@@ -94,6 +100,7 @@
                     title: "부모님과 오늘 있었던 일 이야기 나누기",
                     period: "2026-09-16 (수) ~ 2026-09-17 (목) 19:00~20:00",
                     expectedHours: 2,
+                    expectedMinutes: 0,
                     successCriteria: "즐겁게 대화 마무리하기",
                     history: "[]"
                 };
@@ -104,28 +111,29 @@
             render();
         }
 
-        // [추가됨] 새로운 계획(Plan) 생성 함수
         async function addPlan() {
             const title = document.getElementById('planTitle').value;
             const period = document.getElementById('planPeriod').value;
-            const expected = document.getElementById('planExpected').value;
+            const expectedH = document.getElementById('planExpectedHours').value;
+            const expectedM = document.getElementById('planExpectedMinutes').value;
 
             if (!title) return alert('계획 이름을 입력하세요.');
 
             const newPlan = {
                 title: title,
                 period: period || '-',
-                expectedHours: Number(expected) || 0,
+                expectedHours: Number(expectedH) || 0,
+                expectedMinutes: Number(expectedM) || 0,
                 successCriteria: "",
                 history: "[]"
             };
 
             await apiCall('ADD', 'plans', newPlan);
 
-            // 입력창 비우기
             document.getElementById('planTitle').value = '';
             document.getElementById('planPeriod').value = '';
-            document.getElementById('planExpected').value = '';
+            document.getElementById('planExpectedHours').value = '';
+            document.getElementById('planExpectedMinutes').value = '';
 
             plans = await apiCall('GET_ALL', 'plans');
             render();
@@ -138,20 +146,23 @@
             const newTitle = prompt('새로운 계획 이름을 입력하세요:', plan.title);
             if (!newTitle) return; 
             const newPeriod = prompt('새로운 기간을 입력하세요:', plan.period);
-            const newExpected = prompt('새로운 예상 시간(숫자)을 입력하세요:', plan.expectedHours);
+            const newExpectedH = prompt('새로운 예상 시간(시간)을 입력하세요:', plan.expectedHours || 0);
+            const newExpectedM = prompt('새로운 예상 시간(분)을 입력하세요:', plan.expectedMinutes || 0);
 
             const historyData = plan.history ? JSON.parse(plan.history) : [];
             historyData.push({
                 oldTitle: plan.title,
                 oldPeriod: plan.period,
-                oldExpected: plan.expectedHours,
+                oldExpectedH: plan.expectedHours,
+                oldExpectedM: plan.expectedMinutes,
                 changedAt: new Date().toISOString()
             });
 
             const updatedData = {
                 title: newTitle,
                 period: newPeriod || plan.period,
-                expectedHours: Number(newExpected) || plan.expectedHours,
+                expectedHours: Number(newExpectedH) || 0,
+                expectedMinutes: Number(newExpectedM) || 0,
                 history: JSON.stringify(historyData)
             };
 
@@ -167,11 +178,11 @@
             render();
         }
 
-        // --- 할 일(Task/Do) 관련 로직 ---
         async function addTask() {
             const planId = document.getElementById('taskPlanSelect').value;
             const name = document.getElementById('taskName').value;
             const hours = document.getElementById('actualHours').value;
+            const mins = document.getElementById('actualMinutes').value;
             const blocked = document.getElementById('blockedReason').value;
             
             if (!planId) return alert('어떤 계획에 대한 일인지 먼저 위에서 선택해 주세요.');
@@ -181,6 +192,7 @@
                 planId: planId, 
                 taskName: name,
                 actualHours: Number(hours) || 0,
+                actualMinutes: Number(mins) || 0,
                 blockedReason: blocked,
                 isCompleted: true 
             };
@@ -189,6 +201,7 @@
             
             document.getElementById('taskName').value = '';
             document.getElementById('actualHours').value = '';
+            document.getElementById('actualMinutes').value = '';
             document.getElementById('blockedReason').value = '';
             
             tasks = await apiCall('GET_ALL', 'tasks');
@@ -201,12 +214,14 @@
 
             const newName = prompt('할 일 내용을 수정하세요:', task.taskName);
             if (!newName) return; 
-            const newHours = prompt('실제 걸린 시간(숫자)을 수정하세요:', task.actualHours);
+            const newHours = prompt('실제 걸린 시간(시간)을 수정하세요:', task.actualHours || 0);
+            const newMins = prompt('실제 걸린 시간(분)을 수정하세요:', task.actualMinutes || 0);
             const newBlocked = prompt('막힌 이유를 수정하세요:', task.blockedReason || '');
 
             const updatedData = {
                 taskName: newName,
                 actualHours: Number(newHours) || 0,
+                actualMinutes: Number(newMins) || 0,
                 blockedReason: newBlocked
             };
 
@@ -222,17 +237,22 @@
             render();
         }
 
-        // --- 화면 렌더링 ---
         function render() {
-            // 1. 계획 리스트 렌더링
             const planListEl = document.getElementById('planList');
             planListEl.innerHTML = '';
+            let totalExpectedMins = 0; // 통계용 총 예상 시간(분 단위 변환)
+
             plans.forEach(p => {
                 const div = document.createElement('div');
                 div.className = 'list-item';
                 div.appendChild(createElementWithText('strong', p.title || '제목 없음'));
-                div.appendChild(createElementWithText('p', `기간: ${p.period || '-'} / 예상: ${p.expectedHours || 0}시간`));
                 
+                const expH = p.expectedHours || 0;
+                const expM = p.expectedMinutes || 0;
+                div.appendChild(createElementWithText('p', `기간: ${p.period || '-'} / 예상: ${expH}시간 ${expM}분`));
+                
+                totalExpectedMins += (expH * 60) + expM;
+
                 if (p.history && p.history !== "[]") {
                     const historyCount = JSON.parse(p.history).length;
                     const historyNotice = document.createElement('p');
@@ -260,7 +280,6 @@
                 planListEl.appendChild(div);
             });
 
-            // 2. [추가됨] 할 일 기록용 셀렉트 박스(드롭다운) 옵션 업데이트
             const taskPlanSelect = document.getElementById('taskPlanSelect');
             taskPlanSelect.innerHTML = '<option value="">(연결할 계획을 선택하세요)</option>';
             plans.forEach(p => {
@@ -270,17 +289,15 @@
                 taskPlanSelect.appendChild(option);
             });
 
-            // 3. 할 일 리스트 렌더링
             const taskListEl = document.getElementById('taskList');
             taskListEl.innerHTML = '';
-            let totalActualHours = 0;
+            let totalActualMins = 0; // 통계용 총 실제 시간(분 단위 변환)
             let blockedCount = 0;
 
             tasks.forEach(t => {
                 const div = document.createElement('div');
                 div.className = 'list-item';
                 
-                // 어떤 계획에 속한 일인지 라벨 표시
                 const parentPlan = plans.find(p => p.id === t.planId);
                 if (parentPlan) {
                     const badge = document.createElement('span');
@@ -292,7 +309,12 @@
 
                 div.appendChild(createElementWithText('strong', `✅ ${t.taskName}`));
                 
-                let detail = `소요 시간: ${t.actualHours}시간`;
+                const actH = t.actualHours || 0;
+                const actM = t.actualMinutes || 0;
+                let detail = `소요 시간: ${actH}시간 ${actM}분`;
+                
+                totalActualMins += (actH * 60) + actM;
+
                 if (t.blockedReason) {
                     detail += ` | 막힌 이유: ${t.blockedReason}`;
                     blockedCount++;
@@ -317,16 +339,19 @@
                 div.appendChild(btnGroup);
 
                 taskListEl.appendChild(div);
-                totalActualHours += (t.actualHours || 0);
             });
 
-            // 4. 통계 렌더링
             document.getElementById('statPlans').textContent = plans.length;
             document.getElementById('statCompleted').textContent = tasks.length;
             document.getElementById('statBlocked').textContent = blockedCount;
             
-            const expected = plans.reduce((sum, p) => sum + (p.expectedHours || 0), 0);
-            document.getElementById('statHours').textContent = `${expected} / ${totalActualHours}`;
+            // 분을 다시 시간/분으로 예쁘게 쪼개서 통계에 출력
+            const finalExpH = Math.floor(totalExpectedMins / 60);
+            const finalExpM = totalExpectedMins % 60;
+            const finalActH = Math.floor(totalActualMins / 60);
+            const finalActM = totalActualMins % 60;
+
+            document.getElementById('statHours').innerHTML = `예상 ${finalExpH}h ${finalExpM}m<br>실제 ${finalActH}h ${finalActM}m`;
         }
 
         init();
